@@ -1,6 +1,6 @@
 {
   "name": "remark-stay",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "mdast/remark adapter for markstay: §5.2 tree attachment, source-slice hashing, and intra-pipeline §11 enforcement",
   "type": "module",
   "license": "MIT",

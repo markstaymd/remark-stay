@@ -61,15 +61,22 @@ Default export: the `remarkStay` unified plugin.
 import { unified } from "unified";
 import remarkParse from "remark-parse";
 import remarkStay from "remark-stay";
+import { VFile } from "vfile";
 
-const file = await unified()
+const proc = unified()
   .use(remarkParse)
-  .use(remarkStay, { mode: "both", mdx: false, baseline: priorSource, fail: false })
-  .process(markdown);
+  .use(remarkStay, { mode: "both", mdx: false, baseline: priorSource, fail: false });
+
+const file = new VFile({ value: markdown });
+await proc.run(proc.parse(markdown), file); // .run(), not .process() — inspecting needs no stringifier
 
 file.data.stay; // { stays: [{ id, hash, drift, line, blockType }], findings, diff?, resolutions? }
 file.messages;  // MALFORMED_MARKER / ORPHAN_MARKER / DUPLICATE_ID / HASH_DRIFT / DROPPED_ID / RELOCATED_ID ...
 ```
+
+> Use `.run()` to inspect `file.data.stay`. To write the annotated Markdown back
+> out (annotate mode), add a serializer, `.use(remarkStringify)`, and call
+> `.process()` instead.
 
 Options: `mode` (`'lint' | 'annotate' | 'both'`, default `both`), `mdx` (detect
 `{/* stay: */}` expression nodes; needs `remark-mdx` upstream), `baseline` (a
