@@ -1,0 +1,69 @@
+{
+  "category": "tree-parse",
+  "tier": "tree",
+  "note": "CommonMark-tree (SPEC.md §5.2) segmentation vectors. This tier is consumed ONLY by the remark adapter's runner (impl/remark-stay), never by run_py.py or the impl/js runner, because the §5.2 cases below deliberately differ from blank-line segmentation. Each vector pins BOTH segmenters and their relationship: `treeBlocks` is the tree adapter's extractBlocks output, `stringBlocks` is the blank-line reference (linter/markstay_lint.py) output, and `relation` is whether they diverge or agree. Block shape mirrors the shared `parse` category.",
+  "vectors": [
+    {
+      "name": "loose-list-one-block",
+      "doc": "- a\n\n- b\n\n<!-- stay:list -->\n",
+      "relation": "diverges",
+      "note": "§5.2 win: the tree binds the marker to the whole loose list (one `list` node, §5.1). The blank-line baseline splits the loose list per item on the internal blank line and binds the marker to only the last item.",
+      "treeBlocks": [
+        { "content": "- a\n\n- b", "index": 0, "ids": ["list"], "line": 1, "orphan": false }
+      ],
+      "stringBlocks": [
+        { "content": "- a", "index": 0, "ids": [], "line": 1, "orphan": false },
+        { "content": "- b", "index": 1, "ids": ["list"], "line": 3, "orphan": false }
+      ]
+    },
+    {
+      "name": "blank-line-fence-one-block",
+      "doc": "```\ncode line 1\n\ncode line 2\n```\n<!-- stay:fence -->\n",
+      "relation": "diverges",
+      "note": "§5.2 win: the tree keeps the fenced code block whole (one `code` node) despite the internal blank line, so a single stay reliably identifies the fence. The blank-line baseline splits the fence at the internal blank line into two blocks and binds the marker to only the second half.",
+      "treeBlocks": [
+        { "content": "```\ncode line 1\n\ncode line 2\n```", "index": 0, "ids": ["fence"], "line": 1, "orphan": false }
+      ],
+      "stringBlocks": [
+        { "content": "```\ncode line 1", "index": 0, "ids": [], "line": 1, "orphan": false },
+        { "content": "code line 2\n```", "index": 1, "ids": ["fence"], "line": 4, "orphan": false }
+      ]
+    },
+    {
+      "name": "marker-in-fence-ignored",
+      "doc": "```\n<!-- stay:x -->\n```\n",
+      "relation": "diverges",
+      "note": "Intended divergence (the free correctness win): a marker-shaped comment INSIDE a fence is part of the `code` node's literal value, not a separate `html` node, so the tree correctly does NOT treat it as a marker (the block carries no id). The blank-line baseline raw-scans the text, wrongly detects `stay:x`, and even strips the comment out of the hashed body. This is the raw-scan quirk the string core's Open question tracks; the AST resolves it correctly.",
+      "treeBlocks": [
+        { "content": "```\n<!-- stay:x -->\n```", "index": 0, "ids": [], "line": 1, "orphan": false }
+      ],
+      "stringBlocks": [
+        { "content": "```\n\n```", "index": 0, "ids": ["x"], "line": 1, "orphan": false }
+      ]
+    },
+    {
+      "name": "marker-in-inline-code-ignored",
+      "doc": "Use `<!-- stay:x -->` here.\n",
+      "relation": "diverges",
+      "note": "Intended divergence (the general form of marker-in-fence): marker-shaped text inside an inline code span is literal, represented as an `inlineCode` child, so the tree correctly does NOT treat it as a marker and leaves it in the body. The blank-line baseline raw-scans the paragraph, wrongly detects `stay:x`, and strips it out of the body. So the §8 parity guarantee holds on the agreeing subset EXCEPT where marker-shaped literal text sits inside code (fenced block or inline span); there the tree is more spec-correct.",
+      "treeBlocks": [
+        { "content": "Use `<!-- stay:x -->` here.", "index": 0, "ids": [], "line": 1, "orphan": false }
+      ],
+      "stringBlocks": [
+        { "content": "Use `` here.", "index": 0, "ids": ["x"], "line": 1, "orphan": false }
+      ]
+    },
+    {
+      "name": "blockquote-internal-blank-agrees",
+      "doc": "> line 1\n>\n> line 2\n\n<!-- stay:bq -->\n",
+      "relation": "agrees",
+      "note": "Conformance fact, not a §5.2 lift: SPEC.md §5.2 lists loose lists and blank-line fences as the constructs the tree lifts; a blockquote's internal `>`-prefixed line is NOT a blank line (it is non-empty), so the blank-line baseline already keeps the quote as one block. The two segmenters agree here, which confirms §5.2 only ADDS attachment for loose lists and fences.",
+      "treeBlocks": [
+        { "content": "> line 1\n>\n> line 2", "index": 0, "ids": ["bq"], "line": 1, "orphan": false }
+      ],
+      "stringBlocks": [
+        { "content": "> line 1\n>\n> line 2", "index": 0, "ids": ["bq"], "line": 1, "orphan": false }
+      ]
+    }
+  ]
+}
