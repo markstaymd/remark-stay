@@ -1,5 +1,11 @@
 # remark-stay , mdast/remark adapter for markstay
 
+[![npm](https://img.shields.io/npm/v/remark-stay)](https://www.npmjs.com/package/remark-stay)
+[![bundle size](https://img.shields.io/bundlephobia/minzip/remark-stay)](https://bundlephobia.com/package/remark-stay)
+[![tests](https://img.shields.io/github/actions/workflow/status/markstaymd/remark-stay/test.yml?label=tests)](https://github.com/markstaymd/remark-stay/actions/workflows/test.yml)
+[![spec](https://img.shields.io/badge/spec-v1.1-blue)](https://markstay.org)
+![License](https://img.shields.io/npm/l/remark-stay)
+
 The **integration surface** for [markstay](https://markstay.org) in the
 JavaScript Markdown/MDX pipeline ecosystem. The parser-free core (the
 [`markstay`](https://www.npmjs.com/package/markstay) package) validates the spec
