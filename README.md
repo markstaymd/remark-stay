@@ -29,7 +29,7 @@ Pulls in `markstay` (the core) plus `unified` / `remark-parse` /
 `unist-util-visit` / `mdast-util-to-markdown`. `remark-mdx` is optional (only
 needed to detect markers in MDX expression nodes). Requires Node >= 22.
 
-## Two structural wins from working on the tree
+## Three structural wins from working on the tree
 
 - **mdast is SPEC §5.2 for free.** A `list`, `code` fence, or `blockquote` is one
   node regardless of internal blank lines, so the whole-block attachment the
@@ -39,6 +39,13 @@ needed to detect markers in MDX expression nodes). Requires Node >= 22.
   the `code` node's literal value, not a separate `html` node, so the tree never
   mistakes it for a marker , the raw-scan quirk the string core tracks as an open
   question, resolved for free by the AST.
+- **Intra-pipeline §11: a transform that drops a stay is caught.** Inside a
+  unified pipeline a later transform can mutate or remove a node carrying a stay.
+  Snapshot the §9 anchors at parse time (source-slice hashes are only valid then),
+  run the §11 diff + §9.1 resolve against the re-parsed pipeline output, and a
+  silently dropped stay surfaces as `DROPPED_ID` while a moved one keeps its
+  identity. The string core, with no pipeline visibility, structurally can't offer
+  this. See `examples/transform-safety.mjs` (runnable; exits non-zero on a drop).
 
 ## Layout
 
@@ -57,6 +64,10 @@ test/
   tree-vectors.test.js  the §5.2-only tier (conformance/tree/) + the two
                         intended divergences
   plugin.test.js        plugin behaviour (annotate / lint / baseline / fail / mdx)
+  transform-safety.test.js  intra-pipeline §11: a dropped stay is caught and
+                            fatal under `fail`; a survivor still resolves
+examples/
+  transform-safety.mjs  runnable transform-safety demo (see structural wins above)
 ```
 
 ## Public API

@@ -1,6 +1,6 @@
 {
   "name": "remark-stay",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "mdast/remark adapter for markstay: §5.2 tree attachment, source-slice hashing, and intra-pipeline §11 enforcement",
   "type": "module",
   "license": "MIT",
@@ -22,8 +22,12 @@
     "markdown",
     "block-identity"
   ],
+  "types": "./src/index.d.ts",
   "exports": {
-    ".": "./src/index.js"
+    ".": {
+      "types": "./src/index.d.ts",
+      "default": "./src/index.js"
+    }
   },
   "files": [
     "src",
@@ -37,7 +41,8 @@
     "node": ">=22"
   },
   "dependencies": {
-    "markstay": "^0.1.0",
+    "@types/mdast": "^4.0.0",
+    "markstay": "^0.2.0",
     "mdast-util-to-markdown": "^2.1.2",
     "remark-parse": "^11.0.0",
     "unified": "^11.0.5",
