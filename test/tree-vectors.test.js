@@ -122,3 +122,78 @@ test("serializeHash strips inline markers (§8 body, not the raw serialization)"
   const para = proc.parse(doc).children[0];
   assert.equal(serializeHash(para), bodyHash("Body text."), "marker excluded from the hash");
 });
+
+// --- leading YAML frontmatter (SPEC.md §5) is excluded by SOURCE span ---------
+//
+// The adapter must not depend on `remark-frontmatter` being in the pipeline: with
+// it, the metadata is one `yaml` node; without it, the same bytes are a
+// thematicBreak plus a setext heading. Both fall inside the same source span, so
+// both are dropped and the two pipelines agree with each other and with the string
+// core. `remark-frontmatter` is a devDependency here and the test skips without it,
+// so the published package needs no peer dependency on it.
+
+const frontmatterPlugin = await import("remark-frontmatter").then(
+  (m) => m.default,
+  () => null
+);
+
+test("frontmatter: the same blocks with and without remark-frontmatter", { skip: !frontmatterPlugin && "remark-frontmatter not installed" }, () => {
+  const withFm = unified().use(remarkParse).use(frontmatterPlugin, ["yaml"]);
+  for (const doc of [
+    "---\nstatus: active\nowner: tim\n---\n\n# Heading\n\nBody para.\n",
+    "---\ntitle: t\n---\n# Heading\n\nBody.\n",
+    "---\ntitle: t\n...\nBody.\n", // `...` closer: the plugin does not match, we do
+    "---\nkey: v\n---\n<!-- stay:x -->\n\nBody.\n",
+  ]) {
+    const plain = extractBlocks(proc.parse(doc), doc).map(blockShape);
+    const plugged = extractBlocks(withFm.parse(doc), doc).map(blockShape);
+    const string = lintDocument(doc).blocks.map(blockShape);
+    assert.deepEqual(plugged, plain, `plugin-independent: ${JSON.stringify(doc)}`);
+    assert.deepEqual(plain, string, `matches the string core: ${JSON.stringify(doc)}`);
+  }
+});
+
+test("frontmatter: a span only remark-frontmatter accepts stays a content block", { skip: !frontmatterPlugin && "remark-frontmatter not installed" }, () => {
+  // The documented corner. `remark-frontmatter` is more permissive than SPEC.md §5:
+  // it accepts a payload containing a blank line, which the conservative rule
+  // rejects (that rule is what stops two thematic breaks around a paragraph from
+  // swallowing the paragraph). With the plugin loaded such a span parses as one
+  // `yaml` node, and since it is not a frontmatter span by §5 the adapter keeps it
+  // as an ordinary content block. Nothing is lost; the segmentation differs from
+  // the string core, exactly as it does for any other node the parser groups
+  // differently. Pinned so the behaviour is characterized rather than discovered.
+  const doc = "---\n\nIntro paragraph.\n\n---\n\nBody.\n";
+  const withFm = unified().use(remarkParse).use(frontmatterPlugin, ["yaml"]);
+  const plugged = extractBlocks(withFm.parse(doc), doc).map(blockShape);
+  const string = lintDocument(doc).blocks.map(blockShape);
+
+  assert.equal(plugged.length, 2, "the plugin folds the whole span into one yaml node");
+  assert.ok(plugged[0].content.includes("Intro paragraph."), "content is kept, not dropped");
+  assert.notDeepEqual(plugged, string, "and it therefore differs from the string core");
+});
+
+test("frontmatter: a fence opened in the payload straddles past a blank line", () => {
+  // Found by external review. A code fence opened INSIDE the payload is not closed
+  // by the `---`, so the code node runs past the closing fence AND past the blank
+  // line after it (fences do not end at blank lines). The surviving content then
+  // does not start on `endLine + 1`, and a clamp that assumed it did reported the
+  // blank line's number. The string core blanks lines 1-5 and reports `# H` at
+  // line 7; the adapter must say 7 too.
+  const doc = "---\nkey: v\n```\ncode\n---\n\n# H\n";
+  const tree = extractBlocks(proc.parse(doc), doc).map(blockShape);
+  const string = lintDocument(doc).blocks.map(blockShape);
+  assert.deepEqual(tree, string, "clamped line matches the string core");
+  assert.equal(tree.length, 1);
+  assert.equal(tree[0].content, "# H");
+  assert.equal(tree[0].line, 7);
+});
+
+test("frontmatter: a straddling node keeps the half after the closing fence", () => {
+  // Regression guard for the clamp: dropping the whole node would silently destroy
+  // `Body.`, which is the failure mode the §5 rule is written to avoid.
+  const doc = "---\ntitle: t\n...\nBody.\n";
+  const blocks = extractBlocks(proc.parse(doc), doc);
+  assert.equal(blocks.length, 1);
+  assert.equal(blocks[0].content, "Body.");
+  assert.equal(blocks[0].line, 4);
+});

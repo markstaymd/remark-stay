@@ -16,6 +16,7 @@ import { visit } from "unist-util-visit";
 // it (rather than re-deriving) keeps the block `content` byte-identical to the
 // string core's `asciiTrim(stripMarkers(chunk))`.
 import { findMarkers, stripMarkers, asciiTrim } from "markstay";
+import { frontmatterSpan } from "./frontmatter.js";
 
 const span = (node) => [node.position.start.offset, node.position.end.offset];
 
@@ -28,6 +29,9 @@ const toLF = (s) => s.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
 // separates them, i.e. the next node starts on the line right after the previous
 // node ends. A gap of >= 2 lines means at least one blank line between them.
 const BLANK_GAP = 2;
+
+// ASCII whitespace incl. newlines, the core's `asciiTrim` set (SPEC.md §5/§8).
+const ASCII_WS = /[ \t\n\r\f\v]/;
 
 /** Slice [start, end) of source with the given absolute spans cut out. */
 function sliceCut(source, start, end, spans) {
@@ -84,6 +88,22 @@ function inlineMarkerEntries(node, mdx) {
 }
 
 /**
+ * The line a clamped node's surviving content actually starts on: the frontmatter
+ * ends at `fm.endOffset`, but the content after it need not begin on the very next
+ * line. A fenced code block opened inside the payload swallows the closing fence and
+ * runs past a blank line (fences do not end at blank lines), so the first surviving
+ * character can be lines later. The string core reports the first NON-BLANK line, so
+ * count the line endings skipped getting there.
+ */
+function clampedStartLine(source, fm, node) {
+  const end = node.position.end.offset;
+  let off = fm.endOffset;
+  while (off < end && ASCII_WS.test(source[off])) off++;
+  const breaks = source.slice(fm.endOffset, off).match(/\r\n|\r|\n/g);
+  return fm.endLine + 1 + (breaks ? breaks.length : 0);
+}
+
+/**
  * Classify a top-level node into { node, markerOnly, content, entries }, where
  * `entries` are [{ mk, off }] in source order and `markerOnly` is true when the
  * node is nothing but marker(s) (so it attaches to a neighbour rather than being
@@ -100,29 +120,34 @@ function inlineMarkerEntries(node, mdx) {
  *    are inline child nodes, cut by node identity so marker-shaped text inside an
  *    inline-code descendant is left in the body.
  */
-function classify(node, source, mdx) {
-  const [s, e] = span(node);
+function classify(node, source, mdx, clamp = null) {
+  const [s0, e] = span(node);
+  // `clamp` is set only for a node that straddles the end of a leading frontmatter
+  // span (see extractBlocks): the metadata half is cut off here so the block body
+  // and its line number match what the string core produces on the blanked source.
+  const s = clamp ? Math.max(s0, clamp.offset) : s0;
+  const startLine = clamp ? clamp.line : node.position.start.line;
   const raw = source.slice(s, e);
 
   if (node.type === "code" || node.type === "inlineCode") {
-    return { node, markerOnly: false, content: asciiTrim(toLF(raw)), entries: [] };
+    return { node, startLine, markerOnly: false, content: asciiTrim(toLF(raw)), entries: [] };
   }
 
   if (node.type === "html") {
-    const entries = markersWithOffsets(raw, s, node.position.start.line - 1);
+    const entries = markersWithOffsets(raw, s, startLine - 1);
     const content = asciiTrim(toLF(stripMarkers(raw)));
-    return { node, markerOnly: content === "" && entries.length > 0, content, entries };
+    return { node, startLine, markerOnly: content === "" && entries.length > 0, content, entries };
   }
 
   if (mdx && (node.type === "mdxFlowExpression" || node.type === "mdxTextExpression")) {
-    const ms = findMarkers(`{${node.value}}`, node.position.start.line - 1);
-    if (ms.length) return { node, markerOnly: true, content: "", entries: ms.map((mk) => ({ mk, off: s })) };
-    return { node, markerOnly: false, content: asciiTrim(toLF(raw)), entries: [] };
+    const ms = findMarkers(`{${node.value}}`, startLine - 1);
+    if (ms.length) return { node, startLine, markerOnly: true, content: "", entries: ms.map((mk) => ({ mk, off: s })) };
+    return { node, startLine, markerOnly: false, content: asciiTrim(toLF(raw)), entries: [] };
   }
 
-  const inline = inlineMarkerEntries(node, mdx);
+  const inline = inlineMarkerEntries(node, mdx).filter((x) => x.off >= s);
   const content = asciiTrim(toLF(sliceCut(source, s, e, inline.map((x) => x.span))));
-  return { node, markerOnly: false, content, entries: inline.map((x) => ({ mk: x.mk, off: x.off })) };
+  return { node, startLine, markerOnly: false, content, entries: inline.map((x) => ({ mk: x.mk, off: x.off })) };
 }
 
 /**
@@ -147,6 +172,15 @@ function classify(node, source, mdx) {
 export function extractBlocks(tree, source, opts = {}) {
   const { mdx = false } = opts;
 
+  // 0. Leading YAML frontmatter is metadata, not content (SPEC.md §5), so it is
+  //    excluded before anything is classified. The string core blanks the span; a
+  //    tree adapter cannot rewrite the source it was handed, so it drops the nodes
+  //    that lie inside the span instead. Doing it by SOURCE span rather than by node
+  //    type is what keeps the adapter agreeing with itself with and without
+  //    `remark-frontmatter` loaded (one `yaml` node vs a thematicBreak plus a setext
+  //    heading), and agreeing with the string core either way.
+  const fm = frontmatterSpan(source);
+
   // 1. Classify each top-level child, then reconstruct blank-line chunks: a
   //    maximal run of nodes with no blank line between consecutive nodes (mirrors
   //    the string core's `segmentBlankLine`, but on tree nodes so §5.2 constructs
@@ -162,8 +196,18 @@ export function extractBlocks(tree, source, opts = {}) {
           `source-slice hashing, §8) and before transforms that strip them`
       );
     }
-    const item = classify(node, source, mdx);
-    const startLine = node.position.start.line;
+    // Entirely inside the frontmatter: not a block at all.
+    if (fm && node.position.end.offset <= fm.endOffset) continue;
+    // Straddling the closing fence (`...` as the closer, with content on the next
+    // line, parses as one paragraph): keep the content half, cut the metadata half.
+    // Dropping the whole node here would silently destroy real content, which is
+    // the failure mode this rule is written to avoid everywhere else.
+    const clamp =
+      fm && node.position.start.offset < fm.endOffset
+        ? { offset: fm.endOffset, line: clampedStartLine(source, fm, node) }
+        : null;
+    const item = classify(node, source, mdx, clamp);
+    const startLine = item.startLine;
     if (cur && startLine - prevEnd >= BLANK_GAP) cur = null;
     if (!cur) {
       cur = { startLine, items: [] };
@@ -199,7 +243,7 @@ export function extractBlocks(tree, source, opts = {}) {
         content: item.content,
         // The chunk's first content block takes the chunk start line (which may be
         // a leading marker's line), matching the string core's chunk-start line.
-        line: lastInChunk ? item.node.position.start.line : chunk.startLine,
+        line: lastInChunk ? item.startLine : chunk.startLine,
         index: cidx++,
         node: item.node,
         m: [...pending.splice(0), ...item.entries],

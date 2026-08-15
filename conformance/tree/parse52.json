@@ -64,6 +64,79 @@
       "stringBlocks": [
         { "content": "> line 1\n>\n> line 2", "index": 0, "ids": ["bq"], "line": 1, "orphan": false }
       ]
+    },
+    {
+      "name": "frontmatter-skipped-agrees",
+      "doc": "---\nstatus: active\nowner: tim\n---\n\n# Heading\n\nBody para.\n",
+      "relation": "agrees",
+      "note": "Leading YAML frontmatter is document metadata, not a block (SPEC.md §5), and BOTH segmenters skip it. Before that rule this document was the counterexample to §5's agreement claim: it has no lists and no fences, yet blank-line read the fenced span as one block while CommonMark read the closing `---` as a setext underline and turned the metadata into an H2. The tree adapter reaches the same answer from source offsets rather than by blanking the source, so it agrees whether or not `remark-frontmatter` is loaded.",
+      "treeBlocks": [
+        { "content": "# Heading", "index": 0, "ids": [], "line": 6, "orphan": false },
+        { "content": "Body para.", "index": 1, "ids": [], "line": 8, "orphan": false }
+      ],
+      "stringBlocks": [
+        { "content": "# Heading", "index": 0, "ids": [], "line": 6, "orphan": false },
+        { "content": "Body para.", "index": 1, "ids": [], "line": 8, "orphan": false }
+      ]
+    },
+    {
+      "name": "frontmatter-dots-closer-straddle-agrees",
+      "doc": "---\ntitle: t\n...\nBody.\n",
+      "relation": "agrees",
+      "note": "The straddle case, and the reason the tree adapter clamps rather than drops. `...` is a legal YAML end marker but not a setext underline, so with no blank line after it CommonMark parses lines 2-4 as ONE paragraph that begins inside the frontmatter and ends outside it. The string core blanks lines 1-3 and is left with `Body.`; an adapter that dropped the whole straddling node would silently destroy `Body.`, so it keeps the half after the closing fence.",
+      "treeBlocks": [
+        { "content": "Body.", "index": 0, "ids": [], "line": 4, "orphan": false }
+      ],
+      "stringBlocks": [
+        { "content": "Body.", "index": 0, "ids": [], "line": 4, "orphan": false }
+      ]
+    },
+    {
+      "name": "frontmatter-marker-after-fence-is-an-orphan-agrees",
+      "doc": "---\nkey: v\n---\n<!-- stay:x -->\n\nBody.\n",
+      "relation": "agrees",
+      "note": "The visible consequence for a document stamped before frontmatter was excluded: the marker it carries has no block to attach to, so both segmenters report it as an orphan rather than silently rebinding it to the next block. Failing loudly is the point; the fix is to delete that one marker.",
+      "treeBlocks": [
+        { "content": "", "index": -1, "ids": ["x"], "line": 4, "orphan": true },
+        { "content": "Body.", "index": 0, "ids": [], "line": 6, "orphan": false }
+      ],
+      "stringBlocks": [
+        { "content": "", "index": -1, "ids": ["x"], "line": 4, "orphan": true },
+        { "content": "Body.", "index": 0, "ids": [], "line": 6, "orphan": false }
+      ]
+    },
+    {
+      "name": "leading-thematic-break-not-frontmatter-agrees",
+      "doc": "---\n\nIntro paragraph.\n\n---\n\nBody.\n",
+      "relation": "agrees",
+      "note": "The guard that keeps the frontmatter rule from eating content: a blank line in the payload means the opening `---` is an ordinary thematic break, not a fence. A first-closing-fence rule with no payload check reads lines 1-5 as frontmatter and silently discards `Intro paragraph.` in both segmenters.",
+      "treeBlocks": [
+        { "content": "---", "index": 0, "ids": [], "line": 1, "orphan": false },
+        { "content": "Intro paragraph.", "index": 1, "ids": [], "line": 3, "orphan": false },
+        { "content": "---", "index": 2, "ids": [], "line": 5, "orphan": false },
+        { "content": "Body.", "index": 3, "ids": [], "line": 7, "orphan": false }
+      ],
+      "stringBlocks": [
+        { "content": "---", "index": 0, "ids": [], "line": 1, "orphan": false },
+        { "content": "Intro paragraph.", "index": 1, "ids": [], "line": 3, "orphan": false },
+        { "content": "---", "index": 2, "ids": [], "line": 5, "orphan": false },
+        { "content": "Body.", "index": 3, "ids": [], "line": 7, "orphan": false }
+      ]
+    },
+    {
+      "name": "setext-heading-under-leading-break-diverges",
+      "doc": "---\nTitle\n---\n\nBody.\n",
+      "relation": "diverges",
+      "note": "The other guard: `Title` is not YAML, so the span is a thematic break followed by a setext H2 rather than frontmatter, and neither segmenter skips it. They then disagree for the ordinary §5-vs-§5.2 reason (blank-line joins the three consecutive non-blank lines into one chunk, while the tree separates the break from the heading it underlines). A pre-existing divergence outside §5's tight-list fence-free subset, not a frontmatter effect.",
+      "treeBlocks": [
+        { "content": "---", "index": 0, "ids": [], "line": 1, "orphan": false },
+        { "content": "Title\n---", "index": 1, "ids": [], "line": 2, "orphan": false },
+        { "content": "Body.", "index": 2, "ids": [], "line": 5, "orphan": false }
+      ],
+      "stringBlocks": [
+        { "content": "---\nTitle\n---", "index": 0, "ids": [], "line": 1, "orphan": false },
+        { "content": "Body.", "index": 1, "ids": [], "line": 5, "orphan": false }
+      ]
     }
   ]
 }

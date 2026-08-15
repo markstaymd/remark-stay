@@ -3,7 +3,7 @@
 [![npm](https://img.shields.io/npm/v/remark-stay)](https://www.npmjs.com/package/remark-stay)
 [![bundle size](https://img.shields.io/bundlephobia/minzip/remark-stay)](https://bundlephobia.com/package/remark-stay)
 [![tests](https://img.shields.io/github/actions/workflow/status/markstaymd/remark-stay/test.yml?label=tests)](https://github.com/markstaymd/remark-stay/actions/workflows/test.yml)
-[![spec](https://img.shields.io/badge/spec-v1.1-blue)](https://markstay.org)
+[![spec](https://img.shields.io/badge/spec-v1.2-blue)](https://markstay.org)
 ![License](https://img.shields.io/npm/l/remark-stay)
 
 The **integration surface** for [markstay](https://markstay.org) in the
@@ -14,7 +14,7 @@ cases live (MDX, Astro, Next, Docusaurus, AI doc-editing), where the unit of wor
 is an mdast tree, not raw text.
 
 It is the **third gated implementation** of the [markstay spec](https://markstay.org)
-(v1.1), after the Python reference and the zero-dependency JS core. It does not
+(v1.2), after the Python reference and the zero-dependency JS core. It does not
 fork the algorithms: every hash, ratio, lint code, and resolution verdict comes
 from the core's pure functions (the `markstay` package); this package adds only
 the mdast glue.
@@ -47,6 +47,50 @@ needed to detect markers in MDX expression nodes). Requires Node >= 22.
   identity. The string core, with no pipeline visibility, structurally can't offer
   this. See `examples/transform-safety.mjs` (runnable; exits non-zero on a drop).
 
+## Leading YAML frontmatter, and why it does not need `remark-frontmatter`
+
+Leading YAML frontmatter is document metadata, not a block (SPEC.md §5.3): it is
+never a block, never stamped, and never hashed, so a metadata-only edit
+(`status: draft` -> `status: done`) does not read as a content edit.
+
+The string core blanks the span before segmenting. An adapter is handed a tree
+someone else parsed and cannot rewrite the source, so `frontmatter.js` computes the
+same span in **source offsets** and drops the nodes inside it. Recognizing the span
+from the source rather than from a node type is what makes the adapter agree with
+itself with and without `remark-frontmatter` in the pipeline: with the plugin the
+metadata is one `yaml` node, without it the same bytes are a `thematicBreak` plus a
+setext `heading`, and both fall inside the same span. **No peer dependency on
+`remark-frontmatter`, and no behaviour change when it is present.**
+
+The recognition rule is the core's, verbatim, and it is conservative because `---`
+is also a thematic break and a setext underline. A span counts only when line 1 is
+exactly `---`, a later line is exactly `---` or `...`, the payload between them is
+non-empty with no blank line, and at least one payload line is unambiguously YAML (a
+`key:` or a `- item`). A YAML *comment* does not count, since `# x` is also an ATX
+heading. "Unambiguously YAML" is judged with ASCII whitespace, as everywhere else in
+the spec (§8/§9): the runtimes' own Unicode whitespace sets disagree with each other,
+and a rule that DELETES a span must not vary by implementation. The conditions
+confine the ambiguity rather than removing it: a blank-free payload that reads as
+YAML is *also* ordinary Markdown, whether it is a sequence (`---` / `- Keep this` /
+`---`, a list between two thematic breaks) or a mapping (`---` / `title: v` / `---`,
+a setext heading under one). Frontmatter wins in both, as it does in every mainstream
+site generator; outside that shape everything fails towards "ordinary Markdown".
+
+Two consequences worth knowing:
+
+- **A node straddling the closing fence keeps its content half.** `...` is a legal
+  YAML end marker but not a setext underline, so `---` / `title: t` / `...` /
+  `Body.` parses as one paragraph that starts inside the metadata and ends outside
+  it. The adapter trims the metadata half rather than dropping the node, because
+  dropping it would silently destroy `Body.`
+- **`remark-frontmatter` is more permissive than §5.** It accepts a payload
+  containing a blank line, which §5 rejects (that rejection is what stops two
+  thematic breaks around a paragraph from swallowing the paragraph). With the plugin
+  loaded, such a span arrives as one `yaml` node and the adapter treats it as an
+  ordinary content block: nothing is lost, but the segmentation differs from the
+  string core there, as it does for any node the parser groups differently. Pinned
+  by a test rather than left to be discovered.
+
 ## Layout
 
 ```
@@ -57,6 +101,7 @@ src/
                 core's block-level functions (single-sourced algorithms)
   serialize.js  drift-only serialize hash (NON-normative; see below)
   plugin.js     the unified plugin (vfile messages, file.data.stay, options)
+  frontmatter.js  §5 leading-frontmatter span, by source offsets (see below)
   index.js      public API
 test/
   parity.test.js        the shared corpus (conformance/) through the tree,
@@ -137,6 +182,16 @@ node --test          # or: npm test
 > Pass no path argument: `node --test` auto-discovers `test/*.test.js` (a bare
 > directory arg is not expanded on Node 22).
 
+`remark-frontmatter` is not installed here, so the two tests that characterize the
+plugin **skip**: one proves the frontmatter span is recognized identically with and
+without it, the other pins the documented corner where the plugin's more permissive
+rule keeps a span §5 rejects. Add it (`npm i -D remark-frontmatter`) to run them. The published package depends on it in
+no form, in either direction.
+
+`markstay` resolves to the released core (`^0.6.0`), which is where the frontmatter
+span rule itself lives; this adapter reimplements it in source offsets rather than
+duplicating the rule.
+
 ## Conformance: the third sentinel
 
 `parity.test.js` feeds the shared corpus (`conformance/`, `spec/` + `gen/`)
@@ -146,6 +201,15 @@ through the `remark-mdx` pipeline). It joins the Python reference and the JS cor
 ([`markstay`](https://github.com/markstaymd/markstay-core)) as the third
 cross-impl regression sentinel: any change that breaks agreement fails one of the
 three.
+
+A corpus vector is skipped there when it holds a **thematic break touching
+content** (`---` / `Title` / `---` and friends), which is outside §5's stated
+agreement subset for a reason that has nothing to do with lists or fences:
+blank-line segmentation cannot see that the `---` is its own block. Those vectors
+exist to pin the guards on the frontmatter rule across the three string
+implementations, so the skip is by predicate, not by a list of names that would go
+stale. A recognized frontmatter span is cut before the predicate runs, since both
+segmenters skip it and therefore do agree on it.
 
 The **§5.2-only tier** (`conformance/tree/`) is consumed only here (the string
 runners would fail it by design). It pins both segmenters and their relationship
@@ -158,6 +222,11 @@ on the cases where the tree adds value:
 | marker-in-fence-ignored     | diverges | tree ignores a comment inside a fenced code block; baseline detects it |
 | marker-in-inline-code-ignored | diverges | tree ignores a comment inside an inline `` `code` `` span; baseline detects it |
 | blockquote-internal-blank   | agrees   | a `>`-prefixed line isn't blank, so §5.2 adds nothing here |
+| frontmatter-skipped         | agrees   | leading YAML metadata is not a block in either segmenter |
+| frontmatter-dots-closer-straddle | agrees | a node straddling a `...` closer keeps its content half |
+| frontmatter-marker-after-fence-is-an-orphan | agrees | a pre-existing frontmatter marker fails loudly, not silently |
+| leading-thematic-break-not-frontmatter | agrees | a blank line in the payload means it was never frontmatter |
+| setext-heading-under-leading-break | diverges | not frontmatter either; they then split for the ordinary §5-vs-§5.2 reason |
 
 The intended divergences from the string core (marker-shaped text inside code,
 and source-slice vs serialize hash) also have dedicated assertions in

@@ -1,5 +1,5 @@
 // Type declarations for remark-stay, the mdast/remark adapter for markstay
-// (SPEC.md v1.1, §5.2 tree attachment). Hand-written to match the runtime shapes
+// (SPEC.md v1.2, §5.2 tree attachment). Hand-written to match the runtime shapes
 // in this directory; the block/finding/anchor/resolution shapes are re-used from
 // the string core's published types (import type ... from "markstay").
 
