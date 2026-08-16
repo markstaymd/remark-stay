@@ -1,6 +1,6 @@
 {
   "name": "remark-stay",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "mdast/remark adapter for markstay: §5.2 tree attachment, source-slice hashing, and intra-pipeline §11 enforcement",
   "type": "module",
   "license": "MIT",
@@ -42,7 +42,7 @@
   },
   "dependencies": {
     "@types/mdast": "^4.0.0",
-    "markstay": "^0.6.0",
+    "markstay": "^0.7.0",
     "mdast-util-to-markdown": "^2.1.2",
     "remark-parse": "^11.0.0",
     "unified": "^11.0.5",
