@@ -14,9 +14,12 @@ import { bodyHash, stripMarkers } from "markstay";
  * SHA-256 of the §8-normalized re-serialization of `node`, with markers removed
  * (optionally truncated to `length` hex chars). The §8 hash input is the body
  * with markers stripped (§3), so an inline-trailing marker that `toMarkdown`
- * re-emits must not change the digest. Stripping uses the core's raw `stripMarkers`
- * (same body definition as the string core); this matches the marker-in-fence
- * caveat of the source-slice path. Drift-only; see the module note.
+ * re-emits must not change the digest. Stripping uses the core's raw `stripMarkers`,
+ * which is code-blind, so since SPEC.md §3.3 (v1.5) this is NOT the string core's
+ * body definition: the core keeps a marker-shaped string inside a fence and this
+ * strips it. That costs nothing here because the hash is drift-only and never the
+ * conformance digest, and re-serialization has already renormalized the syntax the
+ * §8 digest is taken over. See the module note.
  */
 export function serializeHash(node, length = null) {
   return bodyHash(stripMarkers(toMarkdown(node)), length);

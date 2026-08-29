@@ -103,6 +103,28 @@ const outsideSubset = (...docs) =>
   docs.some(thematicBreakTouchesContent) &&
   "outside §5's agreement subset: a thematic break touches content";
 
+/**
+ * Why this vector is skipped, or false to run it.
+ *
+ * Two reasons a shared-corpus vector can sit outside §5.4's agreement subset. One
+ * is computed (a thematic break touching content, above). The other is DECLARED by
+ * the corpus: a vector carrying `relation: "diverges"` says the two segmenters
+ * reach different answers and its `note` says why. SPEC.md §3.3 is what made the
+ * declared kind necessary: the rule is about fenced code, so its vectors are about
+ * the constructs where a line rule and a real parser part company (an indented
+ * code block, a fence behind a list marker or a `>` prefix, an inline span, a
+ * marker span crossing a fence boundary). Those must run in the three string
+ * runners, so they belong in the shared tier, and they cannot run here.
+ *
+ * The mark is verified rather than trusted: `declared divergences really diverge`
+ * below fails if a vector claims to diverge and does not, so it cannot be used to
+ * silence a parity regression.
+ */
+const skipReason = (v, ...docs) =>
+  (v.relation === "diverges" &&
+    `declared divergence: ${v.note ?? "outside §5.4's agreement subset"}`) ||
+  outsideSubset(...docs);
+
 const blockShape = (b) => ({
   content: b.content,
   index: b.index,
@@ -136,7 +158,7 @@ function load(category) {
 // --- parse: tree blocks match string-core blocks --------------------------
 test("parse parity (blocks)", async (t) => {
   for (const { tier, v } of load("parse")) {
-    await t.test(`${tier}:${v.name}`, { skip: outsideSubset(v.doc) }, () => {
+    await t.test(`${tier}:${v.name}`, { skip: skipReason(v, v.doc) }, () => {
       const { tree, source, mdx } = parse(v.doc);
       const got = extractBlocks(tree, source, { mdx }).map(blockShape);
       assert.deepEqual(got, v.blocks);
@@ -147,7 +169,7 @@ test("parse parity (blocks)", async (t) => {
 // --- lint: tree findings match string-core findings -----------------------
 test("lint parity (findings)", async (t) => {
   for (const { tier, v } of load("lint")) {
-    await t.test(`${tier}:${v.name}`, { skip: outsideSubset(v.doc) }, () => {
+    await t.test(`${tier}:${v.name}`, { skip: skipReason(v, v.doc) }, () => {
       const { tree, source, mdx } = parse(v.doc);
       const got = sortFindings(lintTree(tree, source, { mdx }).findings).map((f) =>
         findingShape(f, true)
@@ -160,7 +182,7 @@ test("lint parity (findings)", async (t) => {
 // --- hash: source-slice body hash equals the string core on every block ----
 test("hash parity (source-slice vs string core)", async (t) => {
   for (const { tier, v } of load("parse")) {
-    await t.test(`${tier}:${v.name}`, { skip: outsideSubset(v.doc) }, () => {
+    await t.test(`${tier}:${v.name}`, { skip: skipReason(v, v.doc) }, () => {
       const strBlocks = lintDocument(v.doc).blocks.filter((b) => b.index >= 0);
       const { tree, source, mdx } = parse(v.doc);
       const treeBlocks = extractBlocks(tree, source, { mdx }).filter((b) => b.index >= 0);
@@ -176,10 +198,48 @@ test("hash parity (source-slice vs string core)", async (t) => {
   }
 });
 
+// --- the declared divergences must really diverge --------------------------
+//
+// Without this, `relation: "diverges"` would be a way to silence a parity
+// regression by editing the corpus. A vector that claims the two segmenters part
+// company has to show it, on the same comparison the parity tests make.
+test("declared divergences really diverge", async (t) => {
+  // `skipReason` honours the mark in every category this file checks, so the
+  // guard has to see every category too. It can only VERIFY a parse vector (the
+  // comparison is block-shaped), so a mark anywhere else fails loudly here rather
+  // than skipping a parity check nothing ever confirms.
+  const elsewhere = ["lint", "diff", "resolve"].flatMap((c) =>
+    load(c).filter(({ v }) => v.relation === "diverges").map(({ v }) => `${c}:${v.name}`)
+  );
+  assert.deepEqual(
+    elsewhere,
+    [],
+    "a vector outside `parse` declares `relation: \"diverges\"`, which skipReason " +
+      "honours but this guard cannot verify; extend the guard for that category " +
+      "before relying on the mark there"
+  );
+
+  const declared = load("parse").filter(({ v }) => v.relation === "diverges");
+  assert.ok(declared.length > 0, "no declared divergences found; is the corpus loaded?");
+  for (const { tier, v } of declared) {
+    await t.test(`${tier}:${v.name}`, () => {
+      const { tree, source, mdx } = parse(v.doc);
+      const got = extractBlocks(tree, source, { mdx }).map(blockShape);
+      assert.notDeepEqual(
+        got,
+        v.blocks,
+        "declared `relation: \"diverges\"` but the tree agrees with the string core; " +
+          "drop the mark rather than carrying a vector that claims a divergence it does not have"
+      );
+      assert.ok(typeof v.note === "string" && v.note.length > 0, "a declared divergence needs a note saying why");
+    });
+  }
+});
+
 // --- diff: tree regeneration diff matches string-core lintDiff -------------
 test("diff parity", async (t) => {
   for (const { tier, v } of load("diff")) {
-    await t.test(`${tier}:${v.name}`, { skip: outsideSubset(v.before, v.after) }, () => {
+    await t.test(`${tier}:${v.name}`, { skip: skipReason(v, v.before, v.after) }, () => {
       const before = parse(v.before);
       const after = parse(v.after);
       const opts = { mdx: before.mdx || after.mdx };
@@ -194,7 +254,7 @@ test("diff parity", async (t) => {
 // --- resolve: tree ladder matches string-core resolve ---------------------
 test("resolve parity", async (t) => {
   for (const { tier, v } of load("resolve")) {
-    await t.test(`${tier}:${v.name}`, { skip: outsideSubset(v.before, v.after) }, () => {
+    await t.test(`${tier}:${v.name}`, { skip: skipReason(v, v.before, v.after) }, () => {
       const before = parse(v.before);
       const { tree, source, mdx } = parse(v.after);
       const anchors = anchorsFromTree(before.tree, before.source, { mdx: before.mdx });

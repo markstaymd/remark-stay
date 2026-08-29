@@ -32,13 +32,13 @@
     {
       "name": "marker-in-fence-ignored",
       "doc": "```\n<!-- stay:x -->\n```\n",
-      "relation": "diverges",
-      "note": "Intended divergence (the free correctness win): a marker-shaped comment INSIDE a fence is part of the `code` node's literal value, not a separate `html` node, so the tree correctly does NOT treat it as a marker (the block carries no id). The blank-line baseline raw-scans the text, wrongly detects `stay:x`, and even strips the comment out of the hashed body. This is the raw-scan quirk the string core's Open question tracks; the AST resolves it correctly.",
+      "relation": "agrees",
+      "note": "The two segmenters agree since SPEC.md §3.3 (v1.5): text inside a fenced code block is content, so a marker-shaped comment there identifies no block and stays in the hashed body. The tree reached that answer for free (the comment is part of the `code` node's literal value, not a separate `html` node); the string core now reaches it from a line-based fence mask applied before segmentation. Until v1.5 this was the tier's intended divergence, with the baseline raw-scanning `stay:x` as a marker and stripping it out of the body. Its sibling `marker-in-inline-code-ignored` still diverges: §3.3 leaves inline spans alone on purpose.",
       "treeBlocks": [
         { "content": "```\n<!-- stay:x -->\n```", "index": 0, "ids": [], "line": 1, "orphan": false }
       ],
       "stringBlocks": [
-        { "content": "```\n\n```", "index": 0, "ids": ["x"], "line": 1, "orphan": false }
+        { "content": "```\n<!-- stay:x -->\n```", "index": 0, "ids": [], "line": 1, "orphan": false }
       ]
     },
     {

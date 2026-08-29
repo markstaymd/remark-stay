@@ -1,4 +1,4 @@
-// remark-stay: the mdast/remark adapter for markstay (SPEC.md v1.2, §5.2 tree
+// remark-stay: the mdast/remark adapter for markstay (SPEC.md v1.5, §5.2 tree
 // attachment). Default export is the unified plugin; the named exports are the
 // tree-level building blocks, each reusing the string core's pure functions over
 // tree-segmented blocks (impl/js stays the single source of the algorithms).

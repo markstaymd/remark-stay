@@ -3,7 +3,7 @@
 [![npm](https://img.shields.io/npm/v/remark-stay)](https://www.npmjs.com/package/remark-stay)
 [![bundle size](https://img.shields.io/bundlephobia/minzip/remark-stay)](https://bundlephobia.com/package/remark-stay)
 [![tests](https://img.shields.io/github/actions/workflow/status/markstaymd/remark-stay/test.yml?label=tests)](https://github.com/markstaymd/remark-stay/actions/workflows/test.yml)
-[![spec](https://img.shields.io/badge/spec-v1.4-blue)](https://markstay.org)
+[![spec](https://img.shields.io/badge/spec-v1.5-blue)](https://markstay.org)
 ![License](https://img.shields.io/npm/l/remark-stay)
 
 The **integration surface** for [markstay](https://markstay.org) in the
@@ -14,7 +14,7 @@ cases live (MDX, Astro, Next, Docusaurus, AI doc-editing), where the unit of wor
 is an mdast tree, not raw text.
 
 It is the **third gated implementation** of the [markstay spec](https://markstay.org)
-(v1.4), after the Python reference and the zero-dependency JS core. It does not
+(v1.5), after the Python reference and the zero-dependency JS core. It does not
 fork the algorithms: every hash, ratio, lint code, and resolution verdict comes
 from the core's pure functions (the `markstay` package); this package adds only
 the mdast glue.
@@ -44,8 +44,9 @@ needed to detect markers in MDX expression nodes). Requires Node >= 22.
   just "the marker binds the preceding block node." No separate segmenter.
 - **A marker-shaped comment inside a fence is correctly ignored.** It is part of
   the `code` node's literal value, not a separate `html` node, so the tree never
-  mistakes it for a marker , the raw-scan quirk the string core tracks as an open
-  question, resolved for free by the AST.
+  mistakes it for a marker. SPEC.md §3.3 (v1.5) makes that the rule for every
+  reader, and the string core reaches it from a line-based fence mask; the tree
+  had it for free from the start.
 - **Intra-pipeline §11: a transform that drops a stay is caught.** Inside a
   unified pipeline a later transform can mutate or remove a node carrying a stay.
   Snapshot the §9 anchors at parse time (source-slice hashes are only valid then),
@@ -165,12 +166,12 @@ Two ways to get a block's body from the tree:
 - **Source-slice (normative):** slice the original source by the node's
   `position` offsets, cut the marker spans, hash with the core's `bodyHash`. This
   is **byte-identical to the string core's digest** on the §5.2-agreeing subset ,
-  the cross-implementation §8 parity guarantee. The one exception is
-  marker-shaped *literal text inside a code span* (a fenced block or an inline
-  `` `...` ``): the tree leaves it in the body (correct , it is not a real
-  marker), while the string core's raw scan strips it. There the tree is more
-  spec-correct; both behaviours are pinned in `conformance/tree/`. Used for
-  annotate/lint.
+  the cross-implementation §8 parity guarantee. The one exception left is
+  marker-shaped *literal text inside an inline `` `...` `` span*: the tree leaves
+  it in the body, while the string core's raw scan strips it. SPEC.md §3.3 settled
+  the fenced half of that gap in v1.5 and declines inline spans on purpose, so the
+  two segmenters now agree on a fence and still diverge inside backticks; both
+  behaviours are pinned in `conformance/tree/`. Used for annotate/lint.
 - **Serialize (`serializeHash`, drift-only):** after a transform mutates the tree
   (positions stale), re-serialize the node and hash that. remark's serializer
   normalizes syntax (setext -> ATX headings, fence info, bullet style), so this is
@@ -195,9 +196,11 @@ without it, the other pins the documented corner where the plugin's more permiss
 rule keeps a span §5 rejects. Add it (`npm i -D remark-frontmatter`) to run them. The published package depends on it in
 no form, in either direction.
 
-`markstay` resolves to the released core (`^0.6.0`), which is where the frontmatter
-span rule itself lives; this adapter reimplements it in source offsets rather than
-duplicating the rule.
+`markstay` resolves to the released core (`>=0.8.0 <1.0.0`), which is where the
+frontmatter span rule itself lives; this adapter reimplements it in source offsets
+rather than duplicating the rule. The range is deliberately wider than a caret: the
+family shares one version number, so a core release reaches you without this adapter
+republishing.
 
 ## Conformance: the third sentinel
 
@@ -226,7 +229,7 @@ on the cases where the tree adds value:
 |--------|----------|--------------|
 | loose-list-one-block        | diverges | tree binds the whole loose list; baseline splits per item |
 | blank-line-fence-one-block  | diverges | tree keeps the fence whole; baseline splits at the blank line |
-| marker-in-fence-ignored     | diverges | tree ignores a comment inside a fenced code block; baseline detects it |
+| marker-in-fence-ignored     | agrees   | neither segmenter reads a comment inside a fenced code block as a marker (§3.3) |
 | marker-in-inline-code-ignored | diverges | tree ignores a comment inside an inline `` `code` `` span; baseline detects it |
 | blockquote-internal-blank   | agrees   | a `>`-prefixed line isn't blank, so §5.2 adds nothing here |
 | frontmatter-skipped         | agrees   | leading YAML metadata is not a block in either segmenter |
@@ -235,9 +238,10 @@ on the cases where the tree adds value:
 | leading-thematic-break-not-frontmatter | agrees | a blank line in the payload means it was never frontmatter |
 | setext-heading-under-leading-break | diverges | not frontmatter either; they then split for the ordinary §5-vs-§5.2 reason |
 
-The intended divergences from the string core (marker-shaped text inside code,
-and source-slice vs serialize hash) also have dedicated assertions in
-`tree-vectors.test.js`, alongside regressions for the mixed-HTML-block case and
+The intended divergences from the string core (marker-shaped text inside an inline
+code span, and source-slice vs serialize hash) also have dedicated assertions in
+`tree-vectors.test.js`, which since v1.5 additionally pins the fenced case as an
+*agreement*, alongside regressions for the mixed-HTML-block case and
 the positionless-node guard.
 
 ## License

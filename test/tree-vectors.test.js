@@ -60,15 +60,17 @@ for (const data of files) {
   });
 }
 
-// --- Intended divergence 1: a marker-shaped comment inside a fence is not a stay.
-test("divergence: marker inside a fence yields no stay (attach view)", () => {
+// --- Agreement (was divergence 1 until v1.5): a marker-shaped comment inside a
+//     fence is not a stay, under either segmenter. The tree got this for free
+//     (the comment is part of the `code` node's literal value); SPEC.md §3.3 now
+//     requires it of the string core too, from a line-based fence mask.
+test("agreement: marker inside a fence yields no stay, in both views", () => {
   const doc = "```\n<!-- stay:x -->\n```\n";
   assert.deepEqual(attach(proc.parse(doc), doc), [], "no stays in a fence");
-  // The string core, raw-scanning, wrongly finds the in-fence comment as a marker.
   assert.deepEqual(
     lintDocument(doc).blocks.flatMap((b) => b.markers.map((m) => m.id)),
-    ["x"],
-    "string core wrongly detects the in-fence marker"
+    [],
+    "string core honours §3.3"
   );
 });
 
