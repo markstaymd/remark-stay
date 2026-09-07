@@ -279,6 +279,7 @@ export function attach(tree, source, opts = {}) {
   for (const b of extractBlocks(tree, source, opts)) {
     const orphan = b.index === -1;
     for (const mk of b.markers) {
+      if (mk.hasSubhash) continue;
       stays.push({
         id: mk.id,
         hash: mk.hash,

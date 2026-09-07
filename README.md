@@ -3,7 +3,7 @@
 [![npm](https://img.shields.io/npm/v/remark-stay)](https://www.npmjs.com/package/remark-stay)
 [![bundle size](https://img.shields.io/bundlephobia/minzip/remark-stay)](https://bundlephobia.com/package/remark-stay)
 [![tests](https://img.shields.io/github/actions/workflow/status/markstaymd/remark-stay/test.yml?label=tests)](https://github.com/markstaymd/remark-stay/actions/workflows/test.yml)
-[![spec](https://img.shields.io/badge/spec-v1.5-blue)](https://markstay.org)
+[![spec](https://img.shields.io/badge/spec-v1.6-blue)](https://markstay.org)
 ![License](https://img.shields.io/npm/l/remark-stay)
 
 The **integration surface** for [markstay](https://markstay.org) in the
@@ -14,17 +14,19 @@ cases live (MDX, Astro, Next, Docusaurus, AI doc-editing), where the unit of wor
 is an mdast tree, not raw text.
 
 It is the **third gated implementation** of the [markstay spec](https://markstay.org)
-(v1.5), after the Python reference and the zero-dependency JS core. It does not
+(v1.6), after the Python reference and the zero-dependency JS core. It does not
 fork the algorithms: every hash, ratio, lint code, and resolution verdict comes
 from the core's pure functions (the `markstay` package); this package adds only
 the mdast glue.
 
-**Child-block identity (§5.5) is not implemented here.** Version 1.3 lets a direct list
-item carry its own stay under the reserved `subhash` key, and §16 makes segmenting and
-resolving those **optional**. What §16 makes mandatory for every tool is the write-path
-shim, which this package honours: a `subhash` marker is preserved verbatim, never given
-a container hash, and never counted as its block's stay. The Python reference implements
-the section itself.
+**Child-block identity (§§5.5-5.6) is not implemented here.** Version 1.3 lets a
+direct list item carry its own stay under the reserved `subhash` key, and version 1.6
+does the same for a table body row. Section 16 makes segmenting and resolving children
+**optional**, but its block non-attribution rule is mandatory. This package preserves a
+marker carrying the exact `subhash` key as lexical source and never reports it as the
+containing block's stay, even when the value is invalid; a custom key such as
+`x-subhash` remains ordinary block metadata. The Python reference implements the child
+sections themselves.
 
 ## Install
 
@@ -138,7 +140,7 @@ const proc = unified()
   .use(remarkStay, { mode: "both", mdx: false, baseline: priorSource, fail: false });
 
 const file = new VFile({ value: markdown });
-await proc.run(proc.parse(markdown), file); // .run(), not .process() — inspecting needs no stringifier
+await proc.run(proc.parse(markdown), file); // .run(), not .process(); inspecting needs no stringifier
 
 file.data.stay; // { stays: [{ id, hash, drift, line, blockType }], findings, diff?, resolutions? }
 file.messages;  // MALFORMED_MARKER / ORPHAN_MARKER / DUPLICATE_ID / HASH_DRIFT / DROPPED_ID / RELOCATED_ID ...
@@ -190,27 +192,51 @@ node --test          # or: npm test
 > Pass no path argument: `node --test` auto-discovers `test/*.test.js` (a bare
 > directory arg is not expanded on Node 22).
 
-`remark-frontmatter` is not installed here, so the two tests that characterize the
-plugin **skip**: one proves the frontmatter span is recognized identically with and
-without it, the other pins the documented corner where the plugin's more permissive
-rule keeps a span §5 rejects. Add it (`npm i -D remark-frontmatter`) to run them. The published package depends on it in
-no form, in either direction.
+`remark-frontmatter` is a **devDependency**, used by two tests: one proves the
+frontmatter span is recognized identically with and without the plugin, the other
+pins the documented corner where the plugin's more permissive rule keeps a span §5
+rejects. Both skip when it is absent, so the suite passes either way and the
+published package still depends on it in no form.
 
-`markstay` resolves to the released core (`>=0.8.0 <1.0.0`), which is where the
-frontmatter span rule itself lives; this adapter reimplements it in source offsets
-rather than duplicating the rule. The range is deliberately wider than a caret: the
-family shares one version number, so a core release reaches you without this adapter
-republishing.
+In this working copy `markstay` resolves to `file:../js`, so the adapter is tested
+against the local core rather than the last published one , which is the point of
+keeping the two side by side. The published package depends on a released `markstay`
+range instead.
 
 ## Conformance: the third sentinel
 
 `parity.test.js` feeds the shared corpus (`conformance/`, `spec/` + `gen/`)
-through the tree adapter and asserts its blocks, findings, hashes, diffs, and
-resolutions equal the string core's on the §5.2-agreeing subset (MDX vectors go
-through the `remark-mdx` pipeline). It joins the Python reference and the JS core
+through the tree adapter and asserts its blocks, findings, hashes, diffs,
+anchors, and resolutions equal the string core's on the §5.2-agreeing subset
+(MDX vectors go through the `remark-mdx` pipeline). It joins the Python
+reference and the JS core
 ([`markstay`](https://github.com/markstaymd/markstay-core)) as the third
 cross-impl regression sentinel: any change that breaks agreement fails one of the
 three.
+
+**This is a category-routed parity harness, not a full corpus runner**, and the
+difference is asserted rather than left to whatever the loader happens to pick
+up. It routes the categories whose comparison is tree-shaped and leaves marker
+grammar, hashing, minting, staged check and the write path to the local core and
+the four full runners:
+
+| category | records | skipped | why it routes here |
+|----------|--------:|--------:|--------------------|
+| parse    | 59 | 14 | blocks, and the same records again for source-slice hash parity |
+| lint     | 20 |  0 | findings, in order |
+| diff     | 13 |  0 | §11 regeneration diff |
+| anchors  |  4 |  0 | §9 selector STORAGE, which no resolution can see |
+| resolve  | 35 |  0 | the §9.1 ladder |
+
+131 unique core records. `anchors` earns its place for the reason the string
+runners give it one: a producer that stored whole neighbour blocks, or that
+anchored a `subhash` marker, resolves identically to a conforming one on every
+resolve vector, because both sides window and filter at match time. Only the
+storage comparison catches it.
+
+The optional `rows` profile (SPEC.md §5.6 table-row identity) is not routed here
+and this adapter does not advertise it: §16 keeps child segmentation optional and
+only the Python reference implements it.
 
 A corpus vector is skipped there when it holds a **thematic break touching
 content** (`---` / `Title` / `---` and friends), which is outside §5's stated

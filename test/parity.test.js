@@ -137,7 +137,44 @@ const findingShape = (f, withLine) =>
     ? { level: f.level, code: f.code, id: f.id ?? null, line: f.line ?? null }
     : { level: f.level, code: f.code, id: f.id ?? null };
 
+// Which categories a verifier actually consumed. A routing table that only
+// DECLARES what is routed can go on declaring it after the test that reads a
+// category is deleted, so the declaration is recorded here, at the one place the
+// vectors are actually handed out, rather than asserted against a list.
+const CONSUMED = new Set();
+
+// Every category the corpus DECLARES, and the file each was read from. The
+// declaration is `data.category`, which is what `load` routes on; the filename
+// is not, so inventorying names would let a file renamed or re-declared slip
+// past while its vectors go unrouted.
+function declaredCategories() {
+  const seen = new Map();
+  for (const tier of ["spec", "gen"]) {
+    let names;
+    try {
+      names = readdirSync(join(CORPUS, tier));
+    } catch {
+      continue;
+    }
+    for (const name of names.sort()) {
+      if (!name.endsWith(".json")) continue;
+      const data = JSON.parse(readFileSync(join(CORPUS, tier, name), "utf8"));
+      seen.set(data.category, `${tier}/${name}`);
+    }
+  }
+  return seen;
+}
+
 function load(category) {
+  CONSUMED.add(category);
+  return loadRaw(category);
+}
+
+// The same vectors without recording a read. The count assertion below loads
+// every routed category to size it, and if that counted as routing it, deleting
+// a parity test would leave the "was actually read" check satisfied by the very
+// assertion that is supposed to notice.
+function loadRaw(category) {
   const out = [];
   for (const tier of ["spec", "gen"]) {
     let names;
@@ -208,8 +245,11 @@ test("declared divergences really diverge", async (t) => {
   // guard has to see every category too. It can only VERIFY a parse vector (the
   // comparison is block-shaped), so a mark anywhere else fails loudly here rather
   // than skipping a parity check nothing ever confirms.
-  const elsewhere = ["lint", "diff", "resolve"].flatMap((c) =>
-    load(c).filter(({ v }) => v.relation === "diverges").map(({ v }) => `${c}:${v.name}`)
+  // `loadRaw`, not `load`: inspecting a category's metadata is not verifying its
+  // parity, and recording it as read would let this guard stand in for a deleted
+  // parity test in the consumption check below.
+  const elsewhere = ["lint", "diff", "anchors", "resolve"].flatMap((c) =>
+    loadRaw(c).filter(({ v }) => v.relation === "diverges").map(({ v }) => `${c}:${v.name}`)
   );
   assert.deepEqual(
     elsewhere,
@@ -273,6 +313,123 @@ test("resolve parity", async (t) => {
   }
 });
 
+// --- anchors: tree anchor production matches the string core ---------------
+//
+// A separate category for the same reason the string runners give it one:
+// resolution cannot see what a producer STORED. A tree adapter that anchored
+// whole neighbour blocks, or that produced an anchor for a `subhash` marker,
+// resolves identically to a conforming one on every resolve vector, because both
+// sides window and filter at match time. Only this comparison catches it.
+test("anchors parity", async (t) => {
+  for (const { tier, v } of load("anchors")) {
+    await t.test(`${tier}:${v.name}`, { skip: skipReason(v, v.document) }, () => {
+      const { tree, source, mdx } = parse(v.document);
+      const got = anchorsFromTree(tree, source, { mdx });
+      // The runtime anchor keeps its §9 selector nested; the corpus stores it
+      // flat, the same projection `expect_anchors` uses in the Python runner.
+      const shape = (a) => ({
+        id: a.id,
+        hash: a.hash,
+        quote: a.selector.quote,
+        prefix: a.selector.prefix,
+        suffix: a.selector.suffix,
+      });
+      assert.deepEqual(got.map(shape), buildAnchors(v.document).map(shape));
+      assert.deepEqual(got.map(shape), v.anchors);
+    });
+  }
+});
+
+// --- what this harness actually routes -------------------------------------
+//
+// This adapter is NOT a full corpus runner: it routes the categories whose
+// comparison is tree-shaped and leaves marker grammar, hashing, minting, staged
+// check and the write path to the local `markstay` core and the four full
+// runners. That division is fine, and silently narrowing it is not. Asserting
+// the exact per-category counts is what stops a category quietly falling out of
+// routing, which would leave a green suite testing less than it says.
+const ROUTE_DOCS = [
+  ["parse", (v) => [v.doc]],
+  ["lint", (v) => [v.doc]],
+  ["diff", (v) => [v.before, v.after]],
+  ["anchors", (v) => [v.document]],
+  ["resolve", (v) => [v.before, v.after]],
+];
+const ROUTED = ROUTE_DOCS.map(([category]) => category);
+
+test("routed category counts", () => {
+  const counts = {};
+  for (const [category, docsOf] of ROUTE_DOCS) {
+    const loaded = loadRaw(category);
+    const skipped = loaded.filter(({ v }) => skipReason(v, ...docsOf(v))).length;
+    counts[category] = { routed: loaded.length, skipped };
+  }
+  assert.deepEqual(counts, {
+    parse: { routed: 59, skipped: 14 },
+    lint: { routed: 20, skipped: 0 },
+    diff: { routed: 13, skipped: 0 },
+    anchors: { routed: 4, skipped: 0 },
+    resolve: { routed: 35, skipped: 0 },
+  });
+  const routed = Object.values(counts).reduce((n, c) => n + c.routed, 0);
+  assert.equal(routed, 131, "unique core records routed through the tree adapter");
+});
+
+// --- what this harness DECLINES, stated rather than left to silence ---------
+//
+// Asserting the routed counts pins the five categories this harness knows about.
+// It says nothing about a category it has never heard of: a new core file in
+// spec/ or gen/ is simply not routed, and the suite stays green while testing
+// less than the corpus contains. That is the same silence a stale mirror runner
+// has for a whole new tier directory, one level down.
+//
+// So the corpus is inventoried instead of assumed. Every category on disk is
+// either routed above or named here with the reason it is not, and a category
+// that is neither fails this test by name. Adding one is then a decision someone
+// makes rather than an omission nobody sees.
+const DECLINED = {
+  hash: "byte-level digests: no tree shape to compare",
+  mint: "id minting: the string core owns the alphabet and uniqueness",
+  preserve: "§11 preservation instructions: no adapter surface",
+  check: "staged check: a CLI-shaped comparison",
+  score: "resolution scoring: covered through resolve",
+  seqmatch: "sequence matching: an internal of the string resolver",
+  stamp: "the write path: not implemented in this adapter",
+  markers: "raw §4 grammar: below the tree, and the string core's own",
+};
+
+test("every core corpus category is routed or declined by name", () => {
+  const declared = declaredCategories();
+  const known = new Set([...ROUTED, ...Object.keys(DECLINED)]);
+  assert.deepEqual(
+    [...declared.keys()].filter((c) => !known.has(c)).sort(),
+    [],
+    "a core corpus category this harness has never heard of",
+  );
+  assert.deepEqual(
+    [...known].filter((c) => !declared.has(c)).sort(),
+    [],
+    "this harness names a core corpus category the corpus no longer declares",
+  );
+});
+
+// Declaring a category routed is not the same as routing it. This runs last on
+// purpose: node executes a file's tests in declaration order, so by now every
+// verifier above has asked `load` for its vectors, and a category that is claimed
+// but never asked for shows up as one nobody read.
+test("every routed category was actually read by a verifier", () => {
+  assert.deepEqual(
+    ROUTED.filter((category) => !CONSUMED.has(category)).sort(),
+    [],
+    "a category this harness claims to route, whose parity test never ran",
+  );
+  assert.deepEqual(
+    [...CONSUMED].filter((category) => !ROUTED.includes(category)).sort(),
+    [],
+    "a category a verifier read that the routing table does not declare",
+  );
+});
+
 // --- attach view sanity ----------------------------------------------------
 test("attach view binds the preceding block", () => {
   const { tree, source } = parse("A para.\n<!-- stay:a -->\n");
@@ -281,4 +438,23 @@ test("attach view binds the preceding block", () => {
   assert.equal(stays[0].id, "a");
   assert.equal(stays[0].orphan, false);
   assert.ok(stays[0].blockNode);
+});
+
+test("attach view excludes exact subhash keys but keeps extension keys", () => {
+  const md = [
+    "- child <!-- stay:child subhash=bogus -->",
+    "<!-- stay:parent -->",
+    "",
+    "Extension. <!-- stay:extension x-subhash=sha256:abcd -->",
+  ].join("\n");
+  const { tree, source } = parse(md);
+  assert.deepEqual(
+    extractBlocks(tree, source).flatMap((block) => block.markers.map((marker) => marker.id)),
+    ["child", "parent", "extension"],
+    "low-level blocks retain every lexical marker"
+  );
+  assert.deepEqual(
+    attach(tree, source).map((stay) => stay.id),
+    ["parent", "extension"]
+  );
 });

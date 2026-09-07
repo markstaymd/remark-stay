@@ -28,7 +28,7 @@ function buildAnnotation(blocks, findings, diff, resolutions) {
   for (const b of blocks) {
     if (b.index < 0) continue;
     for (const mk of b.markers) {
-      if (mk.malformed) continue;
+      if (mk.malformed || mk.hasSubhash) continue;
       stays.push({
         id: mk.id,
         hash: mk.hash,

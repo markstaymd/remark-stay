@@ -39,6 +39,19 @@ test("annotate: file.data.stay lists stays with block type and line", async () =
   );
 });
 
+test("annotate: child markers stay lexical but are not container stays", async () => {
+  const file = await runStay(
+    "- child <!-- stay:child subhash=bogus -->\n" +
+      "<!-- stay:parent -->\n\n" +
+      "Extension. <!-- stay:extension x-subhash=sha256:abcd -->\n",
+    { mode: "annotate" }
+  );
+  assert.deepEqual(
+    file.data.stay.stays.map((stay) => stay.id),
+    ["parent", "extension"]
+  );
+});
+
 test("lint: malformed / orphan / duplicate surface as messages with lines", async () => {
   const file = await runStay("<!-- stay:loose -->\n\nReal.\n<!-- stay:loose -->\n", { mode: "lint" });
   // loose is an orphan at the top, then a duplicate on the real block.
