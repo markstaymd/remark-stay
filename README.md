@@ -3,7 +3,7 @@
 [![npm](https://img.shields.io/npm/v/remark-stay)](https://www.npmjs.com/package/remark-stay)
 [![bundle size](https://img.shields.io/bundlephobia/minzip/remark-stay)](https://bundlephobia.com/package/remark-stay)
 [![tests](https://img.shields.io/github/actions/workflow/status/markstaymd/remark-stay/test.yml?label=tests)](https://github.com/markstaymd/remark-stay/actions/workflows/test.yml)
-[![spec](https://img.shields.io/badge/spec-v1.6-blue)](https://markstay.org)
+[![spec](https://img.shields.io/badge/spec-v1.7-blue)](https://markstay.org)
 ![License](https://img.shields.io/npm/l/remark-stay)
 
 The **integration surface** for [markstay](https://markstay.org) in the
@@ -14,7 +14,7 @@ cases live (MDX, Astro, Next, Docusaurus, AI doc-editing), where the unit of wor
 is an mdast tree, not raw text.
 
 It is the **third gated implementation** of the [markstay spec](https://markstay.org)
-(v1.6), after the Python reference and the zero-dependency JS core. It does not
+(v1.7), after the Python reference and the zero-dependency JS core. It does not
 fork the algorithms: every hash, ratio, lint code, and resolution verdict comes
 from the core's pure functions (the `markstay` package); this package adds only
 the mdast glue.
@@ -27,6 +27,14 @@ marker carrying the exact `subhash` key as lexical source and never reports it a
 containing block's stay, even when the value is invalid; a custom key such as
 `x-subhash` remains ordinary block metadata. The Python reference implements the child
 sections themselves.
+
+**Write-safety scope (§3.4).** This adapter has no marker-writing API. The
+`annotate` mode records existing stays in `file.data.stay`; it does not insert,
+move, or rewrite marker comments in the tree or Markdown source. `serializeHash`
+serializes an existing node only to compute a drift digest. Neither list-item
+carriers (§5.5) nor table-row carriers (§5.6) can be written here, so §3.4's
+carrier refusals are unreachable. Adding a Markdown serializer to the pipeline
+does not turn this plugin into a marker writer.
 
 ## Install
 
@@ -146,9 +154,9 @@ file.data.stay; // { stays: [{ id, hash, drift, line, blockType }], findings, di
 file.messages;  // MALFORMED_MARKER / ORPHAN_MARKER / DUPLICATE_ID / HASH_DRIFT / DROPPED_ID / RELOCATED_ID ...
 ```
 
-> Use `.run()` to inspect `file.data.stay`. To write the annotated Markdown back
-> out (annotate mode), add a serializer, `.use(remarkStringify)`, and call
-> `.process()` instead.
+> Use `.run()` to inspect `file.data.stay`. To serialize the pipeline's Markdown,
+> add `.use(remarkStringify)` and call `.process()`. The annotation remains in
+> `file.data.stay`; annotate mode does not add marker comments to the Markdown.
 
 Options: `mode` (`'lint' | 'annotate' | 'both'`, default `both`), `mdx` (detect
 `{/* stay: */}` expression nodes; needs `remark-mdx` upstream), `baseline` (a
