@@ -3,7 +3,7 @@
 [![npm](https://img.shields.io/npm/v/remark-stay)](https://www.npmjs.com/package/remark-stay)
 [![bundle size](https://img.shields.io/bundlephobia/minzip/remark-stay)](https://bundlephobia.com/package/remark-stay)
 [![tests](https://img.shields.io/github/actions/workflow/status/markstaymd/remark-stay/test.yml?label=tests)](https://github.com/markstaymd/remark-stay/actions/workflows/test.yml)
-[![spec](https://img.shields.io/badge/spec-v1.8-blue)](https://markstay.org)
+[![spec](https://img.shields.io/badge/spec-v1.9-blue)](https://markstay.org)
 ![License](https://img.shields.io/npm/l/remark-stay)
 
 The **integration surface** for [markstay](https://markstay.org) in the
@@ -14,7 +14,7 @@ cases live (MDX, Astro, Next, Docusaurus, AI doc-editing), where the unit of wor
 is an mdast tree, not raw text.
 
 It is the **third gated implementation** of the [markstay spec](https://markstay.org)
-(v1.8), after the Python reference and the zero-dependency JS core. It does not
+(v1.9), after the Python reference and the zero-dependency JS core. It does not
 fork the algorithms: every hash, ratio, lint code, and resolution verdict comes
 from the core's pure functions (the `markstay` package); this package adds only
 the mdast glue.
@@ -232,11 +232,11 @@ the four full runners:
 |----------|--------:|--------:|--------------------|
 | parse    | 59 | 14 | blocks, and the same records again for source-slice hash parity |
 | lint     | 20 |  0 | findings, in order |
-| diff     | 13 |  0 | §11 regeneration diff |
+| diff     | 20 |  0 | §11 regeneration diff |
 | anchors  |  4 |  0 | §9 selector STORAGE, which no resolution can see |
 | resolve  | 35 |  0 | the §9.1 ladder |
 
-131 unique core records. `anchors` earns its place for the reason the string
+138 unique core records. `anchors` earns its place for the reason the string
 runners give it one: a producer that stored whole neighbour blocks, or that
 anchored a `subhash` marker, resolves identically to a conforming one on every
 resolve vector, because both sides window and filter at match time. Only the

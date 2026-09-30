@@ -367,12 +367,12 @@ test("routed category counts", () => {
   assert.deepEqual(counts, {
     parse: { routed: 59, skipped: 14 },
     lint: { routed: 20, skipped: 0 },
-    diff: { routed: 13, skipped: 0 },
+    diff: { routed: 20, skipped: 0 },
     anchors: { routed: 4, skipped: 0 },
     resolve: { routed: 35, skipped: 0 },
   });
   const routed = Object.values(counts).reduce((n, c) => n + c.routed, 0);
-  assert.equal(routed, 131, "unique core records routed through the tree adapter");
+  assert.equal(routed, 138, "unique core records routed through the tree adapter");
 });
 
 // --- what this harness DECLINES, stated rather than left to silence ---------
