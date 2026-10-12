@@ -111,3 +111,19 @@ test("mdx off: an MDX marker is invisible (plain text, no node)", async () => {
 test("unknown mode throws (no silent no-op)", async () => {
   await assert.rejects(runStay("x\n<!-- stay:a -->\n", { mode: "report" }), /unknown mode/);
 });
+
+// SPEC.md §16 (v1.10) reads the block this adapter selects. A node straddling
+// the frontmatter's closing fence (`...` as the closer, content on the next
+// line, parsed as one paragraph) starts where extractBlocks clamps it, so the
+// item line is the block's opening line and the adoption is kept, under every
+// line ending.
+test("an in-place adoption under straddling frontmatter is kept", async () => {
+  const { diffTrees } = await import("../src/lint.js");
+  const parse = (source) => ({ tree: unified().use(remarkParse).parse(source), source });
+  for (const nl of ["\n", "\r\n", "\r"]) {
+    const before = ["---", "title: v", "...", "2. item <!-- stay:A -->", ""].join(nl);
+    const after = before.replace("stay:A ", "stay:A subhash=sha256:aa ");
+    const codes = diffTrees(parse(before), parse(after)).map((f) => [f.level, f.code, f.id]);
+    assert.deepEqual(codes, [["warn", "ADOPTED_ID", "A"]], JSON.stringify(nl));
+  }
+});

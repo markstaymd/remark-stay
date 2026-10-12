@@ -95,7 +95,7 @@ function inlineMarkerEntries(node, mdx) {
  * character can be lines later. The string core reports the first NON-BLANK line, so
  * count the line endings skipped getting there.
  */
-function clampedStartLine(source, fm, node) {
+export function clampedStartLine(source, fm, node) {
   const end = node.position.end.offset;
   let off = fm.endOffset;
   while (off < end && ASCII_WS.test(source[off])) off++;

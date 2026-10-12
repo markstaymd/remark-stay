@@ -7,12 +7,14 @@
 import {
   lintBlocks,
   lintDiffBlocks,
+  adoptedIds,
   buildAnchorsFromBlocks,
   resolveOverBlocks,
   sortFindings,
   bodyHash,
 } from "markstay";
-import { extractBlocks } from "./attach.js";
+import { extractBlocks, clampedStartLine } from "./attach.js";
+import { frontmatterSpan } from "./frontmatter.js";
 
 /**
  * Well-formedness + intra-document findings over a tree (SPEC.md §7/§8/§10).
@@ -36,10 +38,38 @@ function contentBlocks(tree, source, opts) {
  * agreeing subset. `before`/`after` are { tree, source }.
  */
 export function diffTrees(before, after, opts = {}) {
-  return lintDiffBlocks(
-    extractBlocks(before.tree, before.source, opts),
-    extractBlocks(after.tree, after.source, opts)
-  );
+  const beforeBlocks = extractBlocks(before.tree, before.source, opts);
+  const afterBlocks = extractBlocks(after.tree, after.source, opts);
+  return lintDiffBlocks(beforeBlocks, afterBlocks, {
+    adopted: (gone) =>
+      adoptedIds(before.source, after.source, gone, {
+        segmentBefore: nodeChunks(beforeBlocks, before.source),
+        segmentAfter: nodeChunks(afterBlocks, after.source),
+      }),
+  });
+}
+
+/**
+ * The tree's content blocks as [startLine, chunkText] spans over the core's
+ * normalized text, so SPEC.md §16's (v1.10) in-place adoption test reads the
+ * block this adapter selects, as it does for the string core's chunks. Line
+ * numbers survive the core's CRLF normalization and frontmatter blanking. A
+ * node straddling the frontmatter's closing fence starts where `extractBlocks`
+ * clamps it, after the metadata.
+ */
+function nodeChunks(blocks, source) {
+  const fm = frontmatterSpan(source);
+  return (text) => {
+    const lines = text.split("\n");
+    return blocks
+      .filter((b) => b.index >= 0 && b.node)
+      .map((b) => {
+        const { start, end } = b.node.position;
+        const first =
+          fm && start.offset < fm.endOffset ? clampedStartLine(source, fm, b.node) : start.line;
+        return [first, lines.slice(first - 1, end.line).join("\n")];
+      });
+  };
 }
 
 /**
