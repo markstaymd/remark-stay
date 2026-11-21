@@ -3,7 +3,7 @@
 [![npm](https://img.shields.io/npm/v/remark-stay)](https://www.npmjs.com/package/remark-stay)
 [![bundle size](https://img.shields.io/bundlephobia/minzip/remark-stay)](https://bundlephobia.com/package/remark-stay)
 [![tests](https://img.shields.io/github/actions/workflow/status/markstaymd/remark-stay/test.yml?label=tests)](https://github.com/markstaymd/remark-stay/actions/workflows/test.yml)
-[![spec](https://img.shields.io/badge/spec-v1.11-blue)](https://markstay.org)
+[![spec](https://img.shields.io/badge/spec-v1.12-blue)](https://markstay.org)
 ![License](https://img.shields.io/npm/l/remark-stay)
 
 The **integration surface** for [markstay](https://markstay.org) in the
@@ -14,7 +14,7 @@ cases live (MDX, Astro, Next, Docusaurus, AI doc-editing), where the unit of wor
 is an mdast tree, not raw text.
 
 It is the **third gated implementation** of the [markstay spec](https://markstay.org)
-(v1.11), after the Python reference and the zero-dependency JS core. It does not
+(v1.12), after the Python reference and the zero-dependency JS core. It does not
 fork the algorithms: every hash, ratio, lint code, and resolution verdict comes
 from the core's pure functions (the `markstay` package); this package adds only
 the mdast glue.
@@ -176,12 +176,12 @@ Two ways to get a block's body from the tree:
 - **Source-slice (normative):** slice the original source by the node's
   `position` offsets, cut the marker spans, hash with the core's `bodyHash`. This
   is **byte-identical to the string core's digest** on the §5.2-agreeing subset ,
-  the cross-implementation §8 parity guarantee. The one exception left is
-  marker-shaped *literal text inside an inline `` `...` `` span*: the tree leaves
-  it in the body, while the string core's raw scan strips it. SPEC.md §3.3 settled
-  the fenced half of that gap in v1.5 and declines inline spans on purpose, so the
-  two segmenters now agree on a fence and still diverge inside backticks; both
-  behaviours are pinned in `conformance/tree/`. Used for annotate/lint.
+  the cross-implementation §8 parity guarantee. SPEC.md §3.3 (v1.5) made the two
+  agree on a fence and §3.5 (v1.12) on a closed inline span, so marker-shaped text
+  in either is left in the body by both. The exception left is a span §3.5's scan
+  stops short of or leaves live (a `|` in it, `{=html}` after it, a `<` or open `[`
+  before it): the tree reads code there and the string core a marker. Both
+  behaviours are pinned in `conformance/`. Used for annotate/lint.
 - **Serialize (`serializeHash`, drift-only):** after a transform mutates the tree
   (positions stale), re-serialize the node and hash that. remark's serializer
   normalizes syntax (setext -> ATX headings, fence info, bullet style), so this is
@@ -230,13 +230,13 @@ the four full runners:
 
 | category | records | skipped | why it routes here |
 |----------|--------:|--------:|--------------------|
-| parse    | 59 | 14 | blocks, and the same records again for source-slice hash parity |
-| lint     | 20 |  0 | findings, in order |
+| parse    | 100 | 37 | blocks, and the same records again for source-slice hash parity |
+| lint     | 25 |  1 | findings, in order |
 | diff     | 76 |  1 | §11 regeneration diff |
 | anchors  |  4 |  0 | §9 selector STORAGE, which no resolution can see |
 | resolve  | 57 |  0 | the §9.1 ladder |
 
-216 unique core records. `anchors` earns its place for the reason the string
+262 unique core records. `anchors` earns its place for the reason the string
 runners give it one: a producer that stored whole neighbour blocks, or that
 anchored a `subhash` marker, resolves identically to a conforming one on every
 resolve vector, because both sides window and filter at match time. Only the
@@ -264,7 +264,7 @@ on the cases where the tree adds value:
 | loose-list-one-block        | diverges | tree binds the whole loose list; baseline splits per item |
 | blank-line-fence-one-block  | diverges | tree keeps the fence whole; baseline splits at the blank line |
 | marker-in-fence-ignored     | agrees   | neither segmenter reads a comment inside a fenced code block as a marker (§3.3) |
-| marker-in-inline-code-ignored | diverges | tree ignores a comment inside an inline `` `code` `` span; baseline detects it |
+| marker-in-inline-code-ignored | agrees | neither segmenter reads a comment inside a closed inline `` `code` `` span as a marker (§3.5) |
 | blockquote-internal-blank   | agrees   | a `>`-prefixed line isn't blank, so §5.2 adds nothing here |
 | frontmatter-skipped         | agrees   | leading YAML metadata is not a block in either segmenter |
 | frontmatter-dots-closer-straddle | agrees | a node straddling a `...` closer keeps its content half |
@@ -272,11 +272,18 @@ on the cases where the tree adds value:
 | leading-thematic-break-not-frontmatter | agrees | a blank line in the payload means it was never frontmatter |
 | setext-heading-under-leading-break | diverges | not frontmatter either; they then split for the ordinary §5-vs-§5.2 reason |
 
-The intended divergences from the string core (marker-shaped text inside an inline
-code span, and source-slice vs serialize hash) also have dedicated assertions in
-`tree-vectors.test.js`, which since v1.5 additionally pins the fenced case as an
-*agreement*, alongside regressions for the mixed-HTML-block case and
-the positionless-node guard.
+The intended divergence from the string core (source-slice vs serialize hash) also
+has a dedicated assertion in `tree-vectors.test.js`, which pins the fenced case as
+an *agreement* too, alongside regressions for the mixed-HTML-block case and the
+positionless-node guard. A marker-shaped string in a closed inline code span is
+content to both segmenters (§3.5). Where §3.5's line scan stops short of a span a
+CommonMark parser would close (a span followed by `{=html}` or holding a `|`, a
+backtick inside a marker, a `<` before the span, a reference definition or a link
+label left open, an HTML block), the string core can read a marker the tree reads
+as code, and around an HTML block the two draw different blocks. Those shared
+vectors carry `relation: "diverges"`, and the harness verifies each one, for
+`parse` by blocks and for `lint` by findings, where a marked vector also pins the
+tree's own findings as `treeFindings`.
 
 ## License
 

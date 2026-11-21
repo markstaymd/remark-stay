@@ -33,7 +33,7 @@
       "name": "marker-in-fence-ignored",
       "doc": "```\n<!-- stay:x -->\n```\n",
       "relation": "agrees",
-      "note": "The two segmenters agree since SPEC.md §3.3 (v1.5): text inside a fenced code block is content, so a marker-shaped comment there identifies no block and stays in the hashed body. The tree reached that answer for free (the comment is part of the `code` node's literal value, not a separate `html` node); the string core now reaches it from a line-based fence mask applied before segmentation. Until v1.5 this was the tier's intended divergence, with the baseline raw-scanning `stay:x` as a marker and stripping it out of the body. Its sibling `marker-in-inline-code-ignored` still diverges: §3.3 leaves inline spans alone on purpose.",
+      "note": "The two segmenters agree since SPEC.md §3.3 (v1.5): text inside a fenced code block is content, so a marker-shaped comment there identifies no block and stays in the hashed body. The tree reached that answer for free (the comment is part of the `code` node's literal value, not a separate `html` node); the string core now reaches it from a line-based fence mask applied before segmentation. Until v1.5 this was the tier's intended divergence, with the baseline raw-scanning `stay:x` as a marker and stripping it out of the body. Its sibling `marker-in-inline-code-ignored` agrees for the same reason since §3.5 (v1.12), which covers a closed inline code span.",
       "treeBlocks": [
         { "content": "```\n<!-- stay:x -->\n```", "index": 0, "ids": [], "line": 1, "orphan": false }
       ],
@@ -44,13 +44,13 @@
     {
       "name": "marker-in-inline-code-ignored",
       "doc": "Use `<!-- stay:x -->` here.\n",
-      "relation": "diverges",
-      "note": "Intended divergence (the general form of marker-in-fence): marker-shaped text inside an inline code span is literal, represented as an `inlineCode` child, so the tree correctly does NOT treat it as a marker and leaves it in the body. The blank-line baseline raw-scans the paragraph, wrongly detects `stay:x`, and strips it out of the body. So the §8 parity guarantee holds on the agreeing subset EXCEPT where marker-shaped literal text sits inside code (fenced block or inline span); there the tree is more spec-correct.",
+      "relation": "agrees",
+      "note": "The two segmenters agree since SPEC.md §3.5 (v1.12): a marker-shaped string that opens inside a closed inline code span is content, so it identifies no block and stays in the hashed body. The tree reaches that answer from the `inlineCode` node, whose literal value holds the comment; the string core reaches it from a line scan that pairs backtick runs. Until v1.12 this was the tier's intended divergence, with the baseline raw-scanning `stay:x` as a marker and stripping it out of the body, as `marker-in-fence-ignored` was until v1.5. The scan stops wherever CommonMark could still read the comment as live, so a span the scan declines (one followed by `{=html}`, one holding a `|`, one a stop leaves unscanned) still diverges; those cases are the shared `parse` vectors marked `diverges`.",
       "treeBlocks": [
         { "content": "Use `<!-- stay:x -->` here.", "index": 0, "ids": [], "line": 1, "orphan": false }
       ],
       "stringBlocks": [
-        { "content": "Use `` here.", "index": 0, "ids": ["x"], "line": 1, "orphan": false }
+        { "content": "Use `<!-- stay:x -->` here.", "index": 0, "ids": [], "line": 1, "orphan": false }
       ]
     },
     {

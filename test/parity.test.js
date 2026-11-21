@@ -242,13 +242,14 @@ test("hash parity (source-slice vs string core)", async (t) => {
 // company has to show it, on the same comparison the parity tests make.
 test("declared divergences really diverge", async (t) => {
   // `skipReason` honours the mark in every category this file checks, so the
-  // guard has to see every category too. It can only VERIFY a parse vector (the
-  // comparison is block-shaped), so a mark anywhere else fails loudly here rather
-  // than skipping a parity check nothing ever confirms.
+  // guard has to see every category too. It can VERIFY a parse vector (the
+  // comparison is block-shaped) and a lint vector (finding-shaped), so a mark
+  // anywhere else fails loudly here rather than skipping a parity check nothing
+  // ever confirms.
   // `loadRaw`, not `load`: inspecting a category's metadata is not verifying its
   // parity, and recording it as read would let this guard stand in for a deleted
   // parity test in the consumption check below.
-  const elsewhere = ["lint", "diff", "anchors", "resolve"].flatMap((c) =>
+  const elsewhere = ["diff", "anchors", "resolve"].flatMap((c) =>
     loadRaw(c).filter(({ v }) => v.relation === "diverges").map(({ v }) => `${c}:${v.name}`)
   );
   assert.deepEqual(
@@ -268,6 +269,33 @@ test("declared divergences really diverge", async (t) => {
       assert.notDeepEqual(
         got,
         v.blocks,
+        "declared `relation: \"diverges\"` but the tree agrees with the string core; " +
+          "drop the mark rather than carrying a vector that claims a divergence it does not have"
+      );
+      assert.ok(typeof v.note === "string" && v.note.length > 0, "a declared divergence needs a note saying why");
+    });
+  }
+
+  // A lint vector diverges when the tree's findings differ from the string
+  // core's. SPEC.md §3.5 is what needs it: a span followed by `{=html}` stays a
+  // marker to the string core and is plain code to a CommonMark tree, so a
+  // finding about such a marker exists only on one side. Inequality alone would
+  // let any wrong tree finding pass, so a marked lint vector also pins what the
+  // tree must report, as `treeFindings`.
+  for (const { tier, v } of loadRaw("lint").filter(({ v }) => v.relation === "diverges")) {
+    await t.test(`${tier}:${v.name}`, () => {
+      const { tree, source, mdx } = parse(v.doc);
+      const got = sortFindings(lintTree(tree, source, { mdx }).findings).map((f) =>
+        findingShape(f, true)
+      );
+      assert.ok(
+        Array.isArray(v.treeFindings),
+        "a lint vector declaring `relation: \"diverges\"` needs `treeFindings`, the tree's expected findings"
+      );
+      assert.deepEqual(got, v.treeFindings, "tree findings");
+      assert.notDeepEqual(
+        got,
+        v.findings,
         "declared `relation: \"diverges\"` but the tree agrees with the string core; " +
           "drop the mark rather than carrying a vector that claims a divergence it does not have"
       );
@@ -365,14 +393,14 @@ test("routed category counts", () => {
     counts[category] = { routed: loaded.length, skipped };
   }
   assert.deepEqual(counts, {
-    parse: { routed: 59, skipped: 14 },
-    lint: { routed: 20, skipped: 0 },
+    parse: { routed: 100, skipped: 37 },
+    lint: { routed: 25, skipped: 1 },
     diff: { routed: 76, skipped: 1 },
     anchors: { routed: 4, skipped: 0 },
     resolve: { routed: 57, skipped: 0 },
   });
   const routed = Object.values(counts).reduce((n, c) => n + c.routed, 0);
-  assert.equal(routed, 216, "unique core records routed through the tree adapter");
+  assert.equal(routed, 262, "unique core records routed through the tree adapter");
 });
 
 // --- what this harness DECLINES, stated rather than left to silence ---------
